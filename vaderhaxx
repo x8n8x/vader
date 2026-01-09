@@ -88,6 +88,39 @@ local KeyMap = {
 for i = 65, 90 do KeyMap[string.char(i)] = string.char(i) end
 for i = 0, 9 do KeyMap[tostring(i)] = tostring(i) end
 
+
+function Library:GetFlag(flag)
+    return Flags[flag]
+end
+
+function Library:SetFlag(flag, value)
+    if Flags[flag] ~= nil then
+        Flags[flag] = value
+    end
+end
+
+function Library:GetAllFlags()
+    return Flags
+end
+
+function Library:AddNotification(title, msg, dur)
+    table.insert(Notifs, {
+        Title = title,
+        Message = msg,
+        Duration = dur,
+        Start = os.clock(),
+    })
+end
+
+function Library:ToggleUI()
+    UI.Visible = not UI.Visible
+    if not UI.Visible and UI.CurDrop then
+        UI.CurDrop.Open = false
+        UI.CurDrop = nil
+    end
+end
+
+
 local function getMouse()
     local p = getmouseposition()
     return {x = p.x, y = p.y}
@@ -319,11 +352,7 @@ end
 local function procBind(kb, flag, down)
     if flag == "ui_toggle_keybind" then
         if down and not kb.Last then
-            UI.Visible = not UI.Visible
-            if not UI.Visible and UI.CurDrop then
-                UI.CurDrop.Open = false
-                UI.CurDrop = nil
-            end
+            Library:ToggleUI()
         end
         kb.Last = down
         return
@@ -459,15 +488,6 @@ local function drawKB()
         local t = string.format("[ %s ] %s", k, v.win.Name)
         drawTxt(x+16, listy+4+(i-1)*15, t, cl.Text, 1, false)
     end
-end
-
-local function addNotif(title, msg, dur)
-    table.insert(Notifs, {
-        Title = title,
-        Message = msg,
-        Duration = dur,
-        Start = os.clock(),
-    })
 end
 
 local function drawNotifs()
