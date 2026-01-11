@@ -1,0 +1,1244 @@
+--!optimize2
+--!strict
+
+local Library = {}
+local rs = game:GetService("RunService")
+local ws = workspace
+local cam = ws.CurrentCamera
+
+local cl = {
+    Accent = Color3.fromRGB(255, 200, 69),
+    Text = Color3.fromRGB(255, 255, 255),
+    Outline = Color3.fromRGB(5, 5, 5),
+    Bg = Color3.fromRGB(15, 15, 15),
+    SecBg = Color3.fromRGB(30, 30, 30),
+    Inactive = Color3.fromRGB(65, 65, 65),
+    TabInact = Color3.fromRGB(100, 100, 100),
+    Dark = Color3.fromRGB(8, 8, 8),
+    Light = Color3.fromRGB(30, 30, 30),
+    KeyBg = Color3.fromRGB(15, 15, 15),
+    Inner = Color3.fromRGB(30, 30, 30),
+    Outer = Color3.fromRGB(40, 40, 40),
+}
+
+local UI = {
+    Visible = true,
+    Pos = {x = 100, y = 100},
+    Size = {x = 560, y = 740},
+    CurTab = nil,
+    Tabs = {},
+    CurDrop = nil,
+    CurSlider = nil,
+    DragSlider = false,
+    DragScroll = false,
+    ScrollStart = 0,
+    ScrollOff = 0,
+    Name = "vaderhaxx",
+    TabAnim = {
+        Active = false,
+        Start = 0,
+        From = 0,
+        To = 0,
+        Now = 0,
+        Width = 0
+    }
+}
+
+local Inp = {
+    MDown = false,
+    MClick = false,
+    Keys = {},
+    DragUI = false,
+    DragStart = nil,
+    UIPos = nil,
+    RDown = false,
+    RClick = false
+}
+
+
+ShowWM = true
+ShowKB = true
+RainbowWM = true
+RainHue = 0
+LastT = os.clock()
+
+WMPos = {x = cam.ViewportSize.x / 2, y = 50}
+KBPos = {x = 100, y = 600}
+WMDrag = false
+KBDrag = false
+
+Flags = {}
+Binds = {}
+ActiveB = {}
+KeyWins = {}
+Notifs = {}
+
+local KeyMap = {
+    ["F1"] = "F1", ["F2"] = "F2", ["F3"] = "F3", ["F4"] = "F4",
+    ["F5"] = "F5", ["F6"] = "F6", ["F7"] = "F7", ["F8"] = "F8",
+    ["F9"] = "F9", ["F10"] = "F10", ["F11"] = "F11", ["F12"] = "F12",
+    ["Backspace"] = "BS", ["Tab"] = "TAB", ["Return"] = "ENT",
+    ["Shift"] = "SHIFT", ["Control"] = "CTRL", ["Alt"] = "ALT",
+    ["Space"] = "SPC", ["Insert"] = "INS", ["Delete"] = "DEL",
+    ["PageUp"] = "PGUP", ["PageDown"] = "PGDN", ["End"] = "END",
+    ["Home"] = "HOME", ["Left"] = "LEFT", ["Up"] = "UP",
+    ["Right"] = "RIGHT", ["Down"] = "DOWN",
+    ["LeftMouse"] = "LMB", ["RightMouse"] = "RMB",
+}
+
+for i = 65, 90 do KeyMap[string.char(i)] = string.char(i) end
+for i = 0, 9 do KeyMap[tostring(i)] = tostring(i) end
+
+function Library:GetFlag(flag)
+    return Flags[flag]
+end
+
+function Library:SetFlag(flag, value)
+    if Flags[flag] ~= nil then
+        Flags[flag] = value
+    end
+end
+
+function Library:GetAllFlags()
+    return Flags
+end
+
+function Library:AddNotification(title, msg, dur)
+    table.insert(Notifs, {
+        Title = title,
+        Message = msg,
+        Duration = dur,
+        Start = os.clock(),
+    })
+end
+
+function Library:ToggleUI()
+    UI.Visible = not UI.Visible
+    if not UI.Visible and UI.CurDrop then
+        UI.CurDrop.Open = false
+        UI.CurDrop = nil
+    end
+end
+
+local function getMouse()
+    local p = getmouseposition()
+    return {x = p.x, y = p.y}
+end
+
+local function inBox(x, y, w, h)
+    local m = getMouse()
+    return m.x >= x and m.x <= x + w and m.y >= y and m.y <= y + h
+end
+
+local function clamp(v, min, max)
+    return math.max(min, math.min(max, v))
+end
+
+local function txtSize(t, s)
+    local b = DrawingImmediate.GetTextBounds("Proggy", s or 13, t)
+    return {x = b.x, y = b.y}
+end
+
+local function drawRect(x, y, w, h, c, a)
+    DrawingImmediate.FilledRectangle(vector.create(x, y), vector.create(w, h), c, a)
+end
+
+local function drawTxt(x, y, t, c, a, ct, sz)
+    DrawingImmediate.OutlinedText(vector.create(x, y), sz or 13, c, a, t, ct, "Proggy")
+end
+
+function Library:Window(cfg)
+    local win = {Tabs = {}, Name = cfg.name or "UI"}
+    
+    function win:Tab(cfg)
+        local tab = {
+            Name = cfg.name,
+            Active = false,
+            Sections = {},
+            Scroll = 0,
+            MaxScroll = 0,
+        }
+        
+        table.insert(self.Tabs, tab)
+        UI.Tabs = self.Tabs
+        
+        if #self.Tabs == 1 then
+            tab.Active = true
+            UI.CurTab = tab
+        end
+        
+        function tab:Section(cfg)
+            local sec = {
+                Name = cfg.name,
+                Side = cfg.side or "left",
+                Elements = {},
+                HeaderH = 28,
+                ElemsH = 0,
+            }
+            
+            function sec:updateH()
+                local t = 0
+                for _, e in ipairs(self.Elements) do t = t + e.Height end
+                self.ElemsH = t
+            end
+            
+            function sec:getH()
+                return self.HeaderH + self.ElemsH + 12
+            end
+            
+            table.insert(tab.Sections, sec)
+            
+            function sec:Toggle(cfg)
+                local tog = {
+                    Type = "toggle",
+                    Name = cfg.name,
+                    Flag = cfg.flag,
+                    Value = cfg.default or false,
+                    Callback = cfg.callback,
+                    Keybind = nil,
+                    KeyTxt = "NONE",
+                    Binding = false,
+                    Height = 20,
+                }
+                
+                if tog.Flag then Flags[tog.Flag] = tog.Value end
+                
+                function tog:Set(v)
+                    self.Value = v
+                    if self.Flag then Flags[self.Flag] = v end
+                    if self.Callback then self.Callback(v) end
+                end
+                
+                function tog:AddKeybind(cfg)
+                    local kb = {
+                        Name = cfg.name,
+                        flag = cfg.flag,
+                        Key = cfg.default,
+                        Callback = cfg.callback,
+                        Active = false,
+                        Last = false,
+                    }
+                    
+                    self.Keybind = kb
+                    
+                    if cfg.flag then
+                        Binds[cfg.flag] = kb
+                        ActiveB[cfg.flag] = false
+                        KeyWins[cfg.flag] = {Name = cfg.name, Keybind = kb, Visible = false}
+                        if cfg.default then self.KeyTxt = KeyMap[cfg.default] or cfg.default end
+                    end
+                end
+                
+                table.insert(sec.Elements, tog)
+                sec:updateH()
+                return tog
+            end
+            
+            function sec:Slider(cfg)
+                local sld = {
+                    Type = "slider",
+                    Name = cfg.name,
+                    Flag = cfg.flag,
+                    Min = cfg.min or 0,
+                    Max = cfg.max or 100,
+                    Value = cfg.default or 50,
+                    Suffix = cfg.suffix or "",
+                    Callback = cfg.callback,
+                    Clicked = false,
+                    Height = 40,
+                }
+                
+                if sld.Flag then Flags[sld.Flag] = sld.Value end
+                
+                function sld:Set(v)
+                    local r = math.floor(v + 0.5)
+                    self.Value = clamp(r, self.Min, self.Max)
+                    if self.Flag then Flags[self.Flag] = self.Value end
+                    if self.Callback then self.Callback(self.Value) end
+                end
+                
+                table.insert(sec.Elements, sld)
+                sec:updateH()
+                return sld
+            end
+            
+            function sec:Dropdown(cfg)
+                local drop = {
+                    Type = "dropdown",
+                    Name = cfg.name,
+                    Flag = cfg.flag,
+                    Items = cfg.items or {},
+                    Multi = cfg.multi or false,
+                    Selected = cfg.multi and {} or (cfg.default or (cfg.items and cfg.items[1] or "")),
+                    Open = false,
+                    Callback = cfg.callback,
+                    Height = 32,
+                }
+                
+                if drop.Flag then Flags[drop.Flag] = drop.Selected end
+                
+                function drop:Set(v)
+                    self.Selected = v
+                    if self.Flag then Flags[self.Flag] = v end
+                    if self.Callback then self.Callback(v) end
+                end
+                
+                table.insert(sec.Elements, drop)
+                sec:updateH()
+                return drop
+            end
+            
+            function sec:Button(cfg)
+                local btn = {
+                    Type = "button",
+                    Name = cfg.name,
+                    Flag = cfg.flag,
+                    Callback = cfg.callback,
+                    Height = 25,
+                }
+                
+                table.insert(sec.Elements, btn)
+                sec:updateH()
+                return btn
+            end
+            
+            function sec:Keybind(cfg)
+                local kb = {
+                    Type = "keybind",
+                    Name = cfg.name,
+                    Flag = cfg.flag,
+                    Key = cfg.default,
+                    KeyTxt = "NONE",
+                    Binding = false,
+                    Callback = cfg.callback,
+                    Active = false,
+                    Last = false,
+                    Height = 20,
+                }
+                
+                if cfg.flag then
+                    Binds[cfg.flag] = kb
+                    ActiveB[cfg.flag] = false
+                    KeyWins[cfg.flag] = {Name = cfg.name, Keybind = kb, Visible = false}
+                    if cfg.default then kb.KeyTxt = KeyMap[cfg.default] or cfg.default end
+                end
+                
+                table.insert(sec.Elements, kb)
+                sec:updateH()
+                return kb
+            end
+            
+            return sec
+        end
+        
+        return tab
+    end
+    
+    return win
+end
+
+function Library:Watermark(cfg)
+    UI.Name = cfg.name or "UI"
+    WMPos = {x = cam.ViewportSize.x / 2, y = 50}
+end
+
+local function updKeyVis()
+    for flag, w in pairs(KeyWins) do 
+        w.Visible = w.Keybind.Active 
+    end
+end
+
+local function procBind(kb, flag, down)
+    if flag == "ui_toggle_keybind" then
+        if down and not kb.Last then
+            Library:ToggleUI()
+        end
+        kb.Last = down
+        return
+    end
+    
+    if down and not kb.Last then
+        kb.Active = not kb.Active
+        ActiveB[flag] = kb.Active
+        if kb.Callback then kb.Callback(kb.Active) end
+        updKeyVis()
+    end
+    kb.Last = down
+end
+
+local function drawWM()
+    if not ShowWM then return end
+    
+    local now = os.clock()
+    RainHue = (RainHue + (now - LastT) * 0.3) % 1
+    LastT = now
+    
+    local t = "[ " .. UI.Name .. " ]"
+    local sz = txtSize(t)
+    local w = sz.x + 16
+    local h = 18
+    local x = WMPos.x - w / 2
+    local y = WMPos.y
+    
+    if UI.Visible and inBox(x, y, w, h) and Inp.MClick then
+        WMDrag = true
+        local m = getMouse()
+        Inp.DragStart = {x = m.x, y = m.y}
+        WMPos = {x = x + w / 2, y = y + h / 2}
+    end
+    
+    if WMDrag then
+        if Inp.MDown then
+            local m = getMouse()
+            WMPos.x = WMPos.x + (m.x - Inp.DragStart.x)
+            WMPos.y = WMPos.y + (m.y - Inp.DragStart.y)
+            Inp.DragStart = {x = m.x, y = m.y}
+        else
+            WMDrag = false
+        end
+    end
+    
+    drawRect(x, y, w, h, cl.SecBg, 1)
+    drawRect(x + 1, y + 1, w - 2, h - 2, cl.Bg, 1)
+    
+    local pre = "[ "
+    local suf = " ]"
+    local cont = UI.Name
+    
+    drawTxt(x + 8, y + 3, pre, cl.Text, 1, false)
+    
+    if RainbowWM then
+        local cx = x + 8 + txtSize(pre).x
+        local total = #cont
+        
+        for i = 1, total do
+            local ch = cont:sub(i, i)
+            local hue = (i / total + RainHue) % 1
+            local r = math.sin(hue * 2 * math.pi + 0) * 0.5 + 0.5
+            local g = math.sin(hue * 2 * math.pi + 2) * 0.5 + 0.5
+            local b = math.sin(hue * 2 * math.pi + 4) * 0.5 + 0.5
+            local col = Color3.fromRGB(r * 255, g * 255, b * 255)
+            
+            drawTxt(cx, y + 3, ch, col, 1, false)
+            cx = cx + txtSize(ch).x
+        end
+    else
+        local cx = x + 8 + txtSize(pre).x
+        drawTxt(cx, y + 3, cont, cl.Accent, 1, false)
+    end
+    
+    drawTxt(x + w - 8 - txtSize(suf).x, y + 3, suf, cl.Text, 1, false)
+end
+
+local function drawKB()
+    if not ShowKB then return end
+    
+    local vis = {}
+    for flag, w in pairs(KeyWins) do 
+        if w.Visible then 
+            table.insert(vis, {flag = flag, win = w})
+        end 
+    end
+    if #vis == 0 then return end
+    
+    table.sort(vis, function(a,b) return a.win.Name < b.win.Name end)
+    
+    local x = KBPos.x
+    local y = KBPos.y
+    local th = 55 + (#vis * 15) + 8
+    local w = 202
+    
+    if UI.Visible and inBox(x, y, w, 30) and Inp.MClick then
+        KBDrag = true
+        local m = getMouse()
+        Inp.DragStart = {x = m.x, y = m.y}
+        KBPos = {x = x, y = y}
+    end
+    
+    if KBDrag then
+        if Inp.MDown then
+            local m = getMouse()
+            KBPos.x = KBPos.x + (m.x - Inp.DragStart.x)
+            KBPos.y = KBPos.y + (m.y - Inp.DragStart.y)
+            Inp.DragStart = {x = m.x, y = m.y}
+        else
+            KBDrag = false
+        end
+    end
+    
+    drawRect(x, y, w, th, cl.Dark, 0.15)
+    drawRect(x+1, y+1, w-2, th-2, cl.Outer, 0.1)
+    drawRect(x+2, y+2, w-4, th-4, cl.Bg, 0.08)
+    
+    drawTxt(x + w/2, y+15, "keybinds", cl.Text, 1, true)
+    
+    local ly = y + 28
+    drawRect(x+20, ly, w-40, 1, cl.Accent, 0.8)
+    
+    local listy = y + 35
+    local boxh = (#vis * 15) + 8
+    
+    drawRect(x+12, listy, w-24, boxh, cl.SecBg, 1)
+    
+    for i, v in ipairs(vis) do
+        local kb = v.win.Keybind
+        local key = kb.Key or ""
+        local k = KeyMap[key] or key or "NONE"
+        local t = string.format("[ %s ] %s", k, v.win.Name)
+        drawTxt(x+16, listy+4+(i-1)*15, t, cl.Text, 1, false)
+    end
+end
+
+local function drawNotifs()
+    local now = os.clock()
+    local rem = {}
+    
+    for i, n in ipairs(Notifs) do
+        local el = now - n.Start
+        if el >= n.Duration then table.insert(rem, i) else
+            local x = cam.ViewportSize.x - 270
+            local y = 100 + (i-1)*75
+            local w = 250
+            local h = 65
+            
+            local a = 1
+            if el < 0.3 then a = el/0.3
+            elseif el > n.Duration-0.3 then a = 1-((el-(n.Duration-0.3))/0.3) end
+            
+            if a > 0 then
+                drawRect(x, y, w, h, cl.Light, 0.5*a)
+                drawRect(x+1, y+1, w-2, h-2, cl.Bg, 0.8*a)
+                
+                drawTxt(x+12, y+12, n.Title, cl.Text, a, false)
+                drawTxt(x+12, y+28, n.Message, cl.Text, a*0.8, false)
+                
+                local p = el/n.Duration
+                drawRect(x+8, y+h-12, w-16, 3, cl.Light, 0.3*a)
+                drawRect(x+8, y+h-12, (w-16)*p, 3, cl.Accent, a)
+            end
+        end
+    end
+    
+    for i = #rem,1,-1 do table.remove(Notifs, rem[i]) end
+end
+
+local function updAnim()
+    if not UI.TabAnim.Active then return end
+    
+    local now = os.clock()
+    local el = now - UI.TabAnim.Start
+    local p = math.min(el/0.15, 1)
+    
+    UI.TabAnim.Now = UI.TabAnim.From + (UI.TabAnim.To - UI.TabAnim.From)*p
+    
+    if p >= 1 then UI.TabAnim.Active = false end
+end
+
+local function drawUI()
+    drawNotifs()
+    if ShowWM then drawWM() end
+    if ShowKB then drawKB() end
+    
+    if not UI.Visible then return end
+    
+    local x = UI.Pos.x
+    local y = UI.Pos.y
+    local w = UI.Size.x
+    local h = UI.Size.y
+    
+    drawRect(x, y, w, h, cl.Dark, 0.4)
+    drawRect(x+1, y+1, w-2, h-2, cl.Outer, 0.3)
+    drawRect(x+2, y+2, w-4, h-4, cl.SecBg, 0.25)
+    drawRect(x+3, y+3, w-6, h-6, cl.Outer, 0.2)
+    drawRect(x+4, y+4, w-8, h-8, cl.Bg, 0.15)
+    
+    local ty = y + 5
+    local th = 28
+    local tw = math.floor((w-28-(#UI.Tabs-1)*4)/#UI.Tabs)
+    local tw2 = tw - 8
+    
+    updAnim()
+    
+    for i, tab in ipairs(UI.Tabs) do
+        local tx = x + 14 + (i-1)*(tw+4)
+        local col = tab.Active and cl.Accent or cl.TabInact
+        drawTxt(tx + tw/2, ty+8, tab.Name, col, 1, true)
+        
+        if Inp.MClick and inBox(tx, ty, tw, 28) then
+            if UI.CurTab ~= tab then
+                UI.TabAnim.Active = true
+                UI.TabAnim.Start = os.clock()
+                UI.TabAnim.From = UI.TabAnim.Now
+                UI.TabAnim.To = tx + 4
+                UI.TabAnim.Width = tw2
+                
+                if UI.CurTab then UI.CurTab.Active = false end
+                UI.CurTab = tab
+                tab.Active = true
+            end
+        end
+    end
+    
+    if not UI.TabAnim.Active and UI.CurTab then
+        for i, tab in ipairs(UI.Tabs) do
+            if tab == UI.CurTab then
+                local tx = x + 14 + (i-1)*(tw+4)
+                UI.TabAnim.Now = tx + 4
+                UI.TabAnim.Width = tw2
+                break
+            end
+        end
+    end
+    
+    local ly = y + 33
+    drawRect(UI.TabAnim.Now, ly, UI.TabAnim.Width, 3, cl.Accent, 1)
+    
+    local ix = x + 10
+    local iy = y + 40
+    local iw = w - 20
+    local ih = h - 50
+    
+    drawRect(ix, iy, iw, ih, cl.Dark, 0.8)
+    drawRect(ix+1, iy+1, iw-2, ih-2, cl.Outer, 0.6)
+    drawRect(ix+2, iy+2, iw-4, ih-4, cl.SecBg, 0.5)
+    drawRect(ix+3, iy+3, iw-6, ih-6, cl.Outer, 0.4)
+    drawRect(ix+4, iy+4, iw-8, ih-8, cl.Bg, 0.25)
+    
+    local tab = UI.CurTab
+    if tab then
+        local cx = ix + 10
+        local cy = iy + 10
+        local cw = iw - 20
+        local ch = ih - 20
+        
+        local top = cy
+        local bot = cy + ch
+        
+        local lx = cx + 8
+        local rx = cx + cw/2 + 10
+        local cw2 = cw/2 - 20
+        
+        local lh = 0
+        local rh = 0
+        for _, s in ipairs(tab.Sections) do
+            if s.Side == "left" then lh = lh + s:getH()
+            else rh = rh + s:getH() end
+        end
+        
+        local maxh = math.max(lh, rh)
+        tab.MaxScroll = math.max(0, maxh - ch)
+        tab.Scroll = clamp(tab.Scroll, 0, tab.MaxScroll)
+        
+        local visibleH = ch
+        local totalContentH = maxh
+        
+        if totalContentH > visibleH then
+            local scrollP = tab.Scroll / tab.MaxScroll
+            local scrollH = (visibleH / totalContentH) * visibleH
+            scrollH = math.max(20, scrollH)
+            local scrollY = cy + (scrollP * (visibleH - scrollH))
+            
+            drawRect(cx + cw - 8, cy, 4, visibleH, cl.Dark, 0.8)
+            drawRect(cx + cw - 8, scrollY, 4, scrollH, cl.Accent, 0.8)
+            
+            if Inp.MClick and inBox(cx + cw - 10, scrollY - 2, 12, scrollH + 4) then
+                UI.DragScroll = true
+                UI.ScrollStart = getMouse().y
+                UI.ScrollOff = tab.Scroll
+            end
+            
+            if UI.DragScroll then
+                if Inp.MDown then
+                    local m = getMouse()
+                    local delta = m.y - UI.ScrollStart
+                    local scrollDelta = (delta / (visibleH - scrollH)) * tab.MaxScroll
+                    tab.Scroll = clamp(UI.ScrollOff + scrollDelta, 0, tab.MaxScroll)
+                else
+                    UI.DragScroll = false
+                end
+            end
+        end
+        
+        lh = 0
+        rh = 0
+        
+        for _, sec in ipairs(tab.Sections) do
+            local sx = sec.Side == "left" and lx or rx
+            local sy = cy - tab.Scroll
+            
+            if sec.Side == "left" then sy = sy + lh
+            else sy = sy + rh end
+            
+            local sh = sec:getH()
+            local sbot = sy + sh
+            
+            if sbot > top and sy < bot then
+                local vy = math.max(sy, top)
+                local vbot = math.min(sbot, bot)
+                local vh = vbot - vy
+                
+                if vh > 0 then
+                    drawRect(sx, vy, cw2, vh, cl.Dark, 0.8)
+                    drawRect(sx+1, vy+1, cw2-2, vh-2, cl.SecBg, 0.7)
+                    
+                    local contentY = sy + 2
+                    local contentH = sh - 4
+                    
+                    if sy < top then
+                        contentY = top + 2
+                        contentH = contentH - (top - sy)
+                    end
+                    
+                    if sbot > bot then
+                        contentH = contentH - (sbot - bot)
+                    end
+                    
+                    if contentH > 0 then
+                        drawRect(sx+2, contentY, cw2-4, contentH, cl.Bg, 0.6)
+                    end
+                end
+                
+                if sy+28 > top and sy+8 < bot then
+                    drawTxt(sx + cw2/2, sy+8, sec.Name, cl.Text, 1, true)
+                end
+                
+                local ey = sy + 28
+                for _, e in ipairs(sec.Elements) do
+                    local eh = e.Height
+                    local ebot = ey + eh
+                    
+                    if ebot > top and ey < bot then
+                        if e.Type == "toggle" then
+                            local cx2 = sx + 8
+                            local cy2 = ey + 2
+                            
+                            if ey+12 <= bot then
+                                drawRect(cx2, cy2, 10, 10, cl.Dark, 1)
+                                if e.Value then drawRect(cx2+1, cy2+1, 8, 8, cl.Accent, 1)
+                                else drawRect(cx2+1, cy2+1, 8, 8, cl.Inactive, 1) end
+                                
+                                if ey+13 <= bot then
+                                    drawTxt(sx+23, ey+2, e.Name, cl.Text, 1, false)
+                                end
+                            end
+                            
+                            if e.Keybind then
+                                local t = e.Binding and "[...]" or "["..e.KeyTxt.."]"
+                                local tw2 = txtSize(t).x
+                                local kx = sx + cw2 - tw2 - 15
+                                local ky = ey + 2
+                                
+                                if ky+12 <= bot then
+                                    drawRect(kx-3, ky, tw2+6, 12, cl.Dark, 1)
+                                    drawRect(kx-2, ky+1, tw2+4, 10, cl.Bg, 0.8)
+                                    local col = e.Binding and cl.Accent or cl.Text
+                                    drawTxt(kx, ky, t, col, 1, false)
+                                end
+                            end
+                            
+                        elseif e.Type == "keybind" then
+                            if ey+13 <= bot then
+                                drawTxt(sx+8, ey+2, e.Name, cl.Text, 1, false)
+                            end
+                            
+                            local t = e.Binding and "[...]" or "["..e.KeyTxt.."]"
+                            local tw2 = txtSize(t).x
+                            local kx = sx + cw2 - tw2 - 15
+                            local ky = ey + 2
+                            
+                            if ky+12 <= bot then
+                                drawRect(kx-3, ky, tw2+6, 12, cl.Dark, 1)
+                                drawRect(kx-2, ky+1, tw2+4, 10, cl.Bg, 0.8)
+                                local col = e.Binding and cl.Accent or cl.Text
+                                drawTxt(kx, ky, t, col, 1, false)
+                            end
+                            
+                        elseif e.Type == "slider" then
+                            if ey+13 <= bot then
+                                drawTxt(sx+8, ey, e.Name, cl.Text, 1, false)
+                            end
+                            
+                            local sw = cw2 - 40
+                            local sx2 = sx + 20
+                            local sy2 = ey + 16
+                            
+                            if sy2+6 <= bot then
+                                local p = (e.Value - e.Min)/(e.Max - e.Min)
+                                local fw = sw * p
+                                
+                                local mx = sx + 9
+                                local my = ey + 19
+                                if my <= bot then drawRect(mx, my, 5, 1, cl.Text, 1) end
+                                
+                                local px = sx + cw2 - 14
+                                local py = ey + 19
+                                if py <= bot then
+                                    drawRect(px, py, 5, 1, cl.Text, 1)
+                                    drawRect(px+2, py-2, 1, 5, cl.Text, 1)
+                                end
+                                
+                                drawRect(sx2, sy2, sw, 6, cl.Dark, 1)
+                                drawRect(sx2+1, sy2+1, sw-2, 4, cl.Inactive, 1)
+                                if fw > 0 then drawRect(sx2+1, sy2+1, fw, 4, cl.Accent, 1) end
+                                
+                                local tx = sx2 + fw - 2
+                                if tx >= sx2 and tx <= sx2+sw and sy2-1 <= bot then
+                                    drawRect(tx, sy2-1, 4, 8, cl.Accent, 1)
+                                end
+                                
+                                if ey+26 <= bot then
+                                    local vt = tostring(e.Value)..e.Suffix
+                                    drawTxt(sx2 + sw/2, ey+24, vt, cl.Text, 1, true)
+                                end
+                            end
+                            
+                        elseif e.Type == "dropdown" then
+                            if ey+13 <= bot then
+                                drawTxt(sx+8, ey+2, e.Name, cl.Text, 1, false)
+                            end
+                            
+                            local dw = cw2 - 14
+                            local dy = ey + 14
+                            
+                            if dy+18 <= bot then
+                                drawRect(sx+8, dy, dw, 18, cl.Dark, 1)
+                                drawRect(sx+9, dy+1, dw-2, 16, cl.Bg, 0.9)
+                                
+                                local d = ""
+                                if e.Multi then d = table.concat(e.Selected, ", ")
+                                else d = e.Selected or "" end
+                                
+                                local tw2 = txtSize(d).x
+                                if tw2 > dw-20 then
+                                    for j = #d,1,-1 do
+                                        local cut = d:sub(1,j).."..."
+                                        if txtSize(cut).x <= dw-20 then d = cut; break end
+                                    end
+                                end
+                                
+                                drawTxt(sx+13, dy+3, d, cl.Text, 1, false)
+                                
+                                local ax = sx+8+dw-9
+                                local ay = dy+8
+                                if e.Open then drawRect(ax, ay, 5, 1, cl.Text, 1)
+                                else
+                                    drawRect(ax+2, ay-3, 1, 1, cl.Text, 1)
+                                    drawRect(ax+1, ay-2, 3, 1, cl.Text, 1)
+                                    drawRect(ax, ay-1, 5, 1, cl.Text, 1)
+                                end
+                            end
+                            
+                        elseif e.Type == "button" then
+                            local bw = cw2 - 14
+                            local by = ey + 1
+                            
+                            if by+18 <= bot then
+                                drawRect(sx+8, by, bw, 18, cl.Dark, 1)
+                                drawRect(sx+9, by+1, bw-2, 16, cl.Bg, 0.8)
+                                drawTxt(sx + bw/2, by+4, e.Name, cl.Text, 1, true)
+                            end
+                        end
+                    end
+                    
+                    ey = ey + eh
+                end
+            end
+            
+            if sec.Side == "left" then lh = lh + sh
+            else rh = rh + sh end
+        end
+    end
+    
+    if inBox(x, y, w, 30) and Inp.MClick then
+        Inp.DragUI = true
+        local m = getMouse()
+        Inp.DragStart = {x=m.x, y=m.y}
+        Inp.UIPos = {x=x, y=y}
+    end
+    
+    if Inp.DragUI then
+        if Inp.MDown then
+            local m = getMouse()
+            UI.Pos.x = Inp.UIPos.x + (m.x - Inp.DragStart.x)
+            UI.Pos.y = Inp.UIPos.y + (m.y - Inp.DragStart.y)
+        else Inp.DragUI = false end
+    end
+end
+
+local function drawDrops()
+    if not UI.CurDrop then return end
+    
+    local tab = UI.CurTab
+    if not tab then return end
+    
+    local cx = UI.Pos.x + 30
+    local cy = UI.Pos.y + 50
+    local cw = UI.Size.x - 60
+    local ch = UI.Size.y - 90
+    
+    local lx = cx + 8
+    local rx = cx + cw/2 + 10
+    local cw2 = cw/2 - 20
+    
+    for _, s in ipairs(tab.Sections) do
+        for _, e in ipairs(s.Elements) do
+            if e == UI.CurDrop and e.Open then
+                local sx = s.Side == "left" and lx or rx
+                local sy = cy + 2 - tab.Scroll
+                
+                for _, s2 in ipairs(tab.Sections) do
+                    if s2 == s then break end
+                    if s2.Side == s.Side then sy = sy + s2:getH() end
+                end
+                
+                local ey = sy + 28
+                for _, el in ipairs(s.Elements) do
+                    if el == e then break end
+                    ey = ey + el.Height
+                end
+                
+                local dx = sx - 1
+                local dy = ey + 10
+                local dw = cw2 - 6
+                
+                local oy = dy + 20
+                local oh = #e.Items * 15 + 10
+                
+                local ob = oy + oh
+                if ob > cy + ch then oh = oh - (ob - (cy+ch)) - 5 end
+                
+                if oh > 0 then
+                    drawRect(dx-1, oy-1, dw+2, oh+2, cl.Dark, 1)
+                    drawRect(dx, oy, dw, oh, cl.Bg, 0.9)
+                    
+                    for i, it in ipairs(e.Items) do
+                        local iy = oy + 5 + (i-1)*15
+                        if iy < oy + oh - 5 then
+                            local sel = false
+                            if e.Multi then
+                                for _, s in ipairs(e.Selected) do
+                                    if s == it then sel = true; break end
+                                end
+                            else sel = e.Selected == it end
+                            local col = sel and cl.Accent or cl.Text
+                            drawTxt(dx+5, iy, it, col, 1, false)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function handleInp()
+    local keys = getpressedkeys()
+    if type(keys) ~= "table" then return end
+    
+    local lp = isleftpressed()
+    Inp.MClick = lp and not Inp.MDown
+    Inp.MDown = lp
+    
+    local rp = isrightpressed()
+    Inp.RClick = rp and not Inp.RDown
+    Inp.RDown = rp
+    
+    for _, k in ipairs(keys) do
+        if type(k) == "string" and not Inp.Keys[k] then
+            Inp.Keys[k] = true
+            
+            local tab = UI.CurTab
+            if tab then
+                for _, s in ipairs(tab.Sections) do
+                    for _, e in ipairs(s.Elements) do
+                        if e.Type == "toggle" and e.Keybind and e.Binding then
+                            e.Keybind.Key = k
+                            e.KeyTxt = KeyMap[k] or k
+                            e.Binding = false
+                            
+                            if e.Keybind.flag then
+                                local win = KeyWins[e.Keybind.flag]
+                                if win then
+                                    win.Keybind.Key = k
+                                end
+                            end
+                        elseif e.Type == "keybind" and e.Binding then
+                            e.Key = k
+                            e.KeyTxt = KeyMap[k] or k
+                            e.Binding = false
+                            
+                            if e.Flag then
+                                local win = KeyWins[e.Flag]
+                                if win then
+                                    win.Keybind.Key = k
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    for k in pairs(Inp.Keys) do
+        local found = false
+        for _, k2 in ipairs(keys) do if k2 == k then found = true; break end end
+        if not found then Inp.Keys[k] = nil end
+    end
+    
+    for flag, kb in pairs(Binds) do
+        local down = Inp.Keys[kb.Key] or false
+        procBind(kb, flag, down)
+    end
+end
+
+local function handleUI()
+    if not UI.Visible then return end
+    
+    local mouse = getMouse()
+    
+    if UI.CurSlider and Inp.MDown and UI.CurSlider.Clicked then
+        UI.DragSlider = true
+        local tab = UI.CurTab
+        if tab then
+            local cx = UI.Pos.x + 30
+            local cy = UI.Pos.y + 50
+            local cw = UI.Size.x - 60
+            local ch = UI.Size.y - 90
+            local lx = cx + 8
+            local rx = cx + cw/2 + 10
+            local cw2 = cw/2 - 20
+            
+            for _, s in ipairs(tab.Sections) do
+                local sx = s.Side == "left" and lx or rx
+                local sy = cy + 2 - tab.Scroll
+                
+                for _, s2 in ipairs(tab.Sections) do
+                    if s2 == s then break end
+                    if s2.Side == s.Side then sy = sy + s2:getH() end
+                end
+                
+                for _, e in ipairs(s.Elements) do
+                    if e == UI.CurSlider then
+                        local ey = sy + 28
+                        for _, el in ipairs(s.Elements) do
+                            if el == e then break end
+                            ey = ey + el.Height
+                        end
+                        
+                        local sw = cw2 - 40
+                        local sx2 = sx + 20
+                        
+                        local localX = clamp(mouse.x, sx2, sx2+sw)
+                        local p = (localX - sx2)/sw
+                        local val = UI.CurSlider.Min + (UI.CurSlider.Max - UI.CurSlider.Min)*p
+                        UI.CurSlider:Set(val)
+                        return
+                    end
+                end
+            end
+        end
+    elseif not Inp.MDown then
+        UI.DragSlider = false
+        if UI.CurSlider then UI.CurSlider.Clicked = false end
+        UI.CurSlider = nil
+    end
+    
+    local tab = UI.CurTab
+    if not tab then return end
+    
+    local cx = UI.Pos.x + 30
+    local cy = UI.Pos.y + 50
+    local cw = UI.Size.x - 60
+    local ch = UI.Size.y - 90
+    
+    local lx = cx + 8
+    local rx = cx + cw/2 + 10
+    local cw2 = cw/2 - 20
+    
+    for _, s in ipairs(tab.Sections) do
+        local sx = s.Side == "left" and lx or rx
+        local sy = cy + 2 - tab.Scroll
+        
+        for _, s2 in ipairs(tab.Sections) do
+            if s2 == s then break end
+            if s2.Side == s.Side then sy = sy + s2:getH() end
+        end
+        
+        local top = cy
+        local bot = cy + ch
+        
+        if sy + s:getH() >= top and sy <= bot then
+            local ey = sy + 28
+            
+            for _, e in ipairs(s.Elements) do
+                local eh = e.Height
+                local ebot = ey + eh
+                local vis = ebot > top and ey < bot
+                
+                if vis then
+                    if e.Type == "toggle" then
+                        local cx2 = sx + 8
+                        local cy2 = ey + 2
+                        local tx = sx + 23
+                        local tw = txtSize(e.Name).x
+                        
+                        if inBox(cx2, cy2, 10, 10) or inBox(tx-3, cy2-2, tw+6, 14) then
+                            if Inp.MClick then e:Set(not e.Value) end
+                        end
+                        
+                        if e.Keybind then
+                            local t = e.Binding and "[...]" or "["..e.KeyTxt.."]"
+                            local tw2 = txtSize(t).x
+                            local kx = sx + cw2 - tw2 - 15
+                            local ky = ey + 2
+                            
+                            if inBox(kx, ky, tw2+6, 12) then
+                                if Inp.MClick then e.Binding = true end
+                            end
+                        end
+                        
+                    elseif e.Type == "keybind" then
+                        local t = e.Binding and "[...]" or "["..e.KeyTxt.."]"
+                        local tw2 = txtSize(t).x
+                        local kx = sx + cw2 - tw2 - 15
+                        local ky = ey + 2
+                        
+                        if inBox(kx, ky, tw2+6, 12) then
+                            if Inp.MClick then e.Binding = true end
+                        end
+                        
+                    elseif e.Type == "slider" then
+                        local sw = cw2 - 40
+                        local sx2 = sx + 20
+                        local sy2 = ey + 16
+                        
+                        local mx = sx + 9
+                        local my = ey + 20
+                        local px = sx + cw2 - 14
+                        local py = ey + 20
+                        
+                        if Inp.MClick then
+                            if inBox(mx-3, my-3, 9, 9) then e:Set(e.Value-1)
+                            elseif inBox(px-3, py-3, 9, 9) then e:Set(e.Value+1)
+                            elseif inBox(sx2, sy2-2, sw, 10) then
+                                e.Clicked = true
+                                UI.CurSlider = e
+                                local localX = clamp(mouse.x, sx2, sx2+sw)
+                                local p = (localX - sx2)/sw
+                                local v = e.Min + (e.Max-e.Min)*p
+                                e:Set(v)
+                            else e.Clicked = false end
+                        end
+                        
+                    elseif e.Type == "dropdown" then
+                        local dx = sx + 8
+                        local dy = ey + 14
+                        local dw = cw2 - 14
+                        local dh = 18
+                        
+                        if inBox(dx-2, dy-2, dw+4, dh+4) and Inp.MClick then
+                            if e == UI.CurDrop then
+                                e.Open = false
+                                UI.CurDrop = nil
+                            else
+                                if UI.CurDrop then UI.CurDrop.Open = false end
+                                e.Open = true
+                                UI.CurDrop = e
+                            end
+                        end
+                        
+                    elseif e.Type == "button" then
+                        local bw = cw2 - 14
+                        local bx = sx + 8
+                        local by = ey + 1
+                        
+                        if inBox(bx-2, by-2, bw+4, 22) and Inp.MClick and e.Callback then
+                            e.Callback()
+                        end
+                    end
+                end
+                
+                ey = ey + eh
+            end
+        end
+    end
+    
+    if Inp.MClick and UI.CurDrop then
+        local tab = UI.CurTab
+        if tab then
+            local cx = UI.Pos.x + 30
+            local cy = UI.Pos.y + 50
+            local cw = UI.Size.x - 60
+            local ch = UI.Size.y - 90
+            local lx = cx + 8
+            local rx = cx + cw/2 + 10
+            local cw2 = cw/2 - 20
+            
+            for _, s in ipairs(tab.Sections) do
+                for _, e in ipairs(s.Elements) do
+                    if e == UI.CurDrop and e.Open then
+                        local sx = s.Side == "left" and lx or rx
+                        local sy = cy + 2 - tab.Scroll
+                        
+                        for _, s2 in ipairs(tab.Sections) do
+                            if s2 == s then break end
+                            if s2.Side == s.Side then sy = sy + s2:getH() end
+                        end
+                        
+                        local ey = sy + 28
+                        for _, el in ipairs(s.Elements) do
+                            if el == e then break end
+                            ey = ey + el.Height
+                        end
+                        
+                        local dx = sx + 8
+                        local dy = ey + 14
+                        local dw = cw2 - 14
+                        local dh = 18
+                        
+                        local oy = dy + 20
+                        local oh = #e.Items * 15 + 10
+                        
+                        if inBox(dx-2, dy-2, dw+4, dh+4) then return
+                        elseif inBox(dx-2, oy-2, dw+4, oh+4) then
+                            local idx = math.floor((mouse.y-(oy+5))/15)+1
+                            if idx >=1 and idx <= #e.Items then
+                                local it = e.Items[idx]
+                                if e.Multi then
+                                    local found = false
+                                    for i, sel in ipairs(e.Selected) do
+                                        if sel == it then
+                                            table.remove(e.Selected, i)
+                                            found = true
+                                            break
+                                        end
+                                    end
+                                    if not found then table.insert(e.Selected, it) end
+                                    e:Set(e.Selected)
+                                else
+                                    e:Set(it)
+                                    e.Open = false
+                                    UI.CurDrop = nil
+                                end
+                            end
+                        else
+                            e.Open = false
+                            UI.CurDrop = nil
+                        end
+                        return
+                    end
+                end
+            end
+        end
+    end
+end
+
+rs.Render:Connect(function()
+    handleInp()
+    handleUI()
+    
+    drawUI()
+    drawDrops()
+end)
+
+return Library
