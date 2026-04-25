@@ -796,16 +796,15 @@ end
 -- render
 function library:render()
     -- draw windows
-    for _, win in pairs(G.windows) do
-        if not win.visible then goto continue end
+    local function draw_win(win)
+        if not win.visible then return end
 
         local ct = win.current_tab
-        if ct == nil then goto continue end
+        if ct == nil then return end
 
         local tab = win.tabs[ct]
-        if tab == nil then goto continue end
+        if tab == nil then return end
 
-        -- collect sections
         local left_secs  = {}
         local right_secs = {}
         for _, sname in ipairs(tab.sec_order) do
@@ -817,9 +816,9 @@ function library:render()
             end
         end
 
-        local col_w = math.floor((win._cw - 12) / 2)
-        local lx    = win._cx + 4
-        local rx    = win._cx + col_w + 12
+        local col_w   = math.floor((win._cw - 12) / 2)
+        local lx      = win._cx + 4
+        local rx      = win._cx + col_w + 12
         local start_y = win._cy + 4
 
         local ly = start_y
@@ -834,15 +833,16 @@ function library:render()
             ry = ry + h + 8
         end
 
-        -- dropdown draw ontop
         if win.open_tool then
             draw_open_dropdown(win)
         end
-
-        ::continue::
     end
 
-    -- rebuild keybindlist
+    for _, win in pairs(G.windows) do
+        draw_win(win)
+    end
+
+    -- rebuild keybind list
     G.keybind_entries = {}
     for _, win in pairs(G.windows) do
         for _, tname in ipairs(win.tab_order) do
@@ -852,8 +852,7 @@ function library:render()
                 for _, iname in ipairs(s.item_order) do
                     local item = s.items[iname]
                     if item.type == "keybind" and item.key and item.key ~= "NONE" then
-                        table.insert(G.keybind_entries,
-                            "[ "..item.key.." ] "..item.name)
+                        table.insert(G.keybind_entries, "[ "..item.key.." ] "..item.name)
                     end
                 end
             end
